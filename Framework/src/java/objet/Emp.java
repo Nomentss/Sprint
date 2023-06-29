@@ -5,9 +5,10 @@
  */
 package objet;
 
-import utils.ModelView;
-import utils.MyAnnotation;
-
+import java.util.ArrayList;
+import java.util.HashMap;
+import utilitaire.ModelView;
+import utilitaire.MyAnnotation;
 
 /**
  *
@@ -15,25 +16,26 @@ import utils.MyAnnotation;
  */
 
 public class Emp {
+    ArrayList<String> listes = new ArrayList<>();
     
-    @MyAnnotation(url="parler")
-    public ModelView parler(){
-        ModelView m = new ModelView();
-        m.setView("liste.jsp");
-        return m;
+    public Emp(){
+        listes.add("Juiliem");
+        listes.add("Joseph");
     }
-    
     @MyAnnotation(url="get-emp")
     public ModelView getAll(){
         ModelView m = new ModelView();
         m.setView("liste.jsp");
+        m.addItem("liste",listes);
         return m;
     }
     
     @MyAnnotation(url="add-emp")
-    public ModelView insert(){
+    public ModelView insert(HashMap<String, String> donnees){
+        listes.add(donnees.get("nom"));
         ModelView m = new ModelView();
         m.setView("liste.jsp");
+        m.addItem("liste", listes);
         return m;
     }
 }

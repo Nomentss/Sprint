@@ -23,8 +23,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.xml.parsers.ParserConfigurationException;
 import org.xml.sax.SAXException;
-import utils.ModelView;
-import utils.Utile;
+import utilitaire.ModelView;
+import utilitaire.Utile;
 
 /**
  *
@@ -49,30 +49,36 @@ public class FrontServlet extends HttpServlet {
     protected void processRequest(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException, ClassNotFoundException, InstantiationException, IllegalAccessException, NoSuchMethodException, IllegalArgumentException, InvocationTargetException, SAXException, ParserConfigurationException, Exception {
         response.setContentType("text/html;charset=UTF-8");
         try (PrintWriter out = response.getWriter()) {
-            out.print(request.getRequestURI());
+            Enumeration<String> paramNames = request.getParameterNames();
             String[] ms = request.getRequestURI().split("/");
             String nomMethode = ms[2];
-            
-            
             String packageName = getInitParameter("package_name");
-            
             String nomDeClasse = packageName+"."+(String) MappingUrls.get(nomMethode).getClassName();
             java.lang.Class cl = java.lang.Class.forName(nomDeClasse);
             Object objet = cl.newInstance();           
             String method = (String) MappingUrls.get(nomMethode).getMethod();
-            Method methode = objet.getClass().getDeclaredMethod(method);
-            Object retour = (ModelView) methode.invoke(objet);
-            out.println(((ModelView) retour).getView());
+            Method methode;
+            Object retour = new Object();
             
-//            Enumeration<String> paramNames = request.getParameterNames();
-//            while (paramNames.hasMoreElements()) {
-//              String paramName = paramNames.nextElement();
-//              String[] paramValues = request.getParameterValues(paramName);
-//              for (String paramValue : paramValues) {
-//                out.println("Param name: " + paramName + " - Value: " + paramValue);
-//              }
-//            }
-            
+            if(paramNames.hasMoreElements()){
+                methode = objet.getClass().getDeclaredMethod(method, HashMap.class);
+                HashMap<String, String> parametres = new HashMap<>();
+                out.print("hello");
+                while (paramNames.hasMoreElements()) {
+                  String paramName = paramNames.nextElement();
+                  String[] paramValues = request.getParameterValues(paramName);
+                  for (String paramValue : paramValues) {
+                    out.println("Param name: " + paramName + " - Value: " + paramValue);
+                    parametres.put(paramName, paramValue);
+                  }
+                }
+                retour = (ModelView) methode.invoke(objet, parametres);
+            }
+            else if(!paramNames.hasMoreElements()){
+                methode = objet.getClass().getDeclaredMethod(method);
+                retour = (ModelView) methode.invoke(objet);
+            }
+ 
             try{
                 ModelView m = (ModelView) retour;
                 String key = null;
@@ -84,7 +90,8 @@ public class FrontServlet extends HttpServlet {
                 requestDispatcher.forward(request,response);
             }
             catch(IOException | ServletException e){
-                throw new Exception("Your servlet doesn't match any function");
+                //throw new Exception("Your servlet doesn't match any function");
+                out.print(e.getMessage());
             }
         }    
     }
