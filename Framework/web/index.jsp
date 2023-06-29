@@ -12,8 +12,12 @@
         <title>JSP Page</title>
     </head>
     <body>
-        <form action="servlet//entrer">
-            Entrer votre nom: <input type="text" name="nom">
+        <form action="add-emp" method="post">
+            Entrer votre nom: <input type="text" name="nom" value="u">
+            <br>
+            Prenom <input type="text" name="prenom" value="u">
+            <br><!-- comment -->
+            Numero <input type="number" name="numero" value=111>
             <input type="submit" value="Valider">
         </form>
         <a href="add-emp">Ajouter emp</a>
