@@ -5,14 +5,11 @@
  */
 package etu2004.framework.servlet;
 
-import javax.servlet.RequestDispatcher;
 import etu2004.framework.Mapping;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.io.UnsupportedEncodingException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.Enumeration;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
@@ -21,83 +18,106 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.servlet.RequestDispatcher;
+import javax.servlet.annotation.MultipartConfig;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpSession;
 import javax.xml.parsers.ParserConfigurationException;
 import org.xml.sax.SAXException;
-import utils.ModelView;
-import utils.Utile;
+import utilitaire.ModelView;
+import utilitaire.MyAnnotation;
+import utilitaire.Utile;
 
 /**
  *
- * @author KM
+ * @author fabien
  */
+@WebServlet
+@MultipartConfig(location = "./")
 public class FrontServlet extends HttpServlet {
 
-    HashMap<String, etu2004.framework.Mapping> MappingUrls = new HashMap<>();
+    HashMap<String, etu2004.framework.Mapping> MappingUrls;
+    HashMap<String, Object> instance_list;
    
     @Override
     public void init() throws ServletException {
         try {      
             String packageName = getInitParameter("package_name");
             setMappingUrls(Utile.getAllHashMap(packageName));
-        } catch (UnsupportedEncodingException ex) {
-            Logger.getLogger(FrontServlet.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (IOException | SAXException | ParserConfigurationException | ClassNotFoundException ex) {
+            setInstance_list(Utile.getAllSengletonClasses(packageName));
+        } catch (Exception ex) {
             Logger.getLogger(FrontServlet.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
-    
-    protected void processRequest(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException, ClassNotFoundException, InstantiationException, IllegalAccessException, NoSuchMethodException, IllegalArgumentException, InvocationTargetException, SAXException, ParserConfigurationException, Exception {
+     
+    protected void processRequest(HttpServletRequest request, HttpServletResponse response) throws Exception {
         response.setContentType("text/html;charset=UTF-8");
-        try (PrintWriter out = response.getWriter()) {
-            out.print(request.getRequestURI());
-            String[] ms = request.getRequestURI().split("/");
-            String nomMethode = ms[2];
-            
-            
-            String packageName = getInitParameter("package_name");
-            
-            String nomDeClasse = packageName+"."+(String) MappingUrls.get(nomMethode).getClassName();
-            java.lang.Class cl = java.lang.Class.forName(nomDeClasse);
-            Object objet = cl.newInstance();           
-            String method = (String) MappingUrls.get(nomMethode).getMethod();
-            Method methode = objet.getClass().getDeclaredMethod(method);
-            Object retour = (ModelView) methode.invoke(objet);
-            out.println(((ModelView) retour).getView());
-            
-//            Enumeration<String> paramNames = request.getParameterNames();
-//            while (paramNames.hasMoreElements()) {
-//              String paramName = paramNames.nextElement();
-//              String[] paramValues = request.getParameterValues(paramName);
-//              for (String paramValue : paramValues) {
-//                out.println("Param name: " + paramName + " - Value: " + paramValue);
-//              }
-//            }
-            
-            try{
-                ModelView m = (ModelView) retour;
-                String key = null;
-                for (Map.Entry<String, Object> entry : m.getData().entrySet()) {
-                    key = (String) entry.getKey();
-                }
+        
+        PrintWriter out = response.getWriter();
+        
+        HttpSession session = request.getSession();
+
+        String uri = request.getRequestURI();
+        String context = request.getContextPath();
+        String nomMethode = uri.substring(context.length()+1);
+        String packageName = getInitParameter("package_name");       
+        String nomDeClasse = packageName+"."+(String) MappingUrls.get(nomMethode).getClassName();
+        java.lang.Class cl = java.lang.Class.forName(nomDeClasse);
+        
+        Object objet = instance_list.get(nomDeClasse);
+        
+        if(objet == null){
+            objet = cl.newInstance();
+            MyAnnotation annotation = (MyAnnotation) cl.getDeclaredAnnotation(MyAnnotation.class);
+            if(annotation.isSegleton()){
+                instance_list.put(nomDeClasse, objet);
+            }
+        }
+        
+        String method = (String) MappingUrls.get(nomMethode).getMethod();
+        Method methode = null;
+        Method[] methodes = objet.getClass().getDeclaredMethods();
+ 
+        for(Method m : methodes){
+            if(m.getName().contains(method)){
+                methode = m;
+                break;
+            }
+        }
+        
+        Object retour = new Object(); //instance à l'objet servant de modelview 
+        
+        String contentType = request.getContentType(); //obtient le type de la requête
+        
+        String sessionName = getInitParameter("session_name");
+        String profilName = getInitParameter("profil_name");
+        
+        Utile.checkAuthorisation(methode, session, profilName);
+          
+        if(contentType != null) retour = Utile.request_multipart_traitor(objet, retour, request, methode); //si c'est du type 'multipart/form-data'
+        else if(contentType == null) retour = Utile.request_traitor(objet, retour, request, methode); //sinon
+       
+        try{
+            ModelView m = (ModelView) retour;
+            String key = "";
+            if(m.getSessions().size() > 0){
+                session.setAttribute(sessionName, m.getSessions().get(sessionName));
+                session.setAttribute(profilName, m.getSessions().get(profilName));
+            }
+            for (Map.Entry<String, Object> entry : m.getData().entrySet()) {
+                key = (String) entry.getKey();
                 request.setAttribute((String) key, m.getData().get(key));
-                RequestDispatcher requestDispatcher = request.getRequestDispatcher("/"+((ModelView) retour).getView());
-                requestDispatcher.forward(request,response);
             }
-            catch(IOException | ServletException e){
-                throw new Exception("Your servlet doesn't match any function");
-            }
+            RequestDispatcher requestDispatcher = request.getRequestDispatcher("/"+((ModelView) retour).getView());
+            requestDispatcher.forward(request,response);
+        }
+        catch(Exception e){
+            out.println(e.fillInStackTrace());
+            out.print(e.getClass());
+            out.println(e.getLocalizedMessage());
         }    
     }
 
-    // <editor-fold defaultstate="collapsed" desc="HttpServlet methods. Click on the + sign on the left to edit the code.">
-    /**
-     * Handles the HTTP <code>GET</code> method.
-     *
-     * @param request servlet request
-     * @param response servlet response
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
-     */
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
@@ -146,6 +166,14 @@ public class FrontServlet extends HttpServlet {
         return "Short description";
     }// </editor-fold>
 
+    public HashMap<String, Object> getInstance_list() {
+        return instance_list;
+    }
+
+    public void setInstance_list(HashMap<String, Object> instance_list) {
+        this.instance_list = instance_list;
+    }
+    
     public HashMap<String, Mapping> getMappingUrls() {
         return MappingUrls;
     }
@@ -153,5 +181,4 @@ public class FrontServlet extends HttpServlet {
     public void setMappingUrls(HashMap<String, Mapping> MappingUrls) {
         this.MappingUrls = MappingUrls;
     }
-    
 }
